@@ -54,74 +54,81 @@ class VideoPlaylist(typing.Sequence[pathlib.Path]):
 
 
 class VideoPlayer:
-    def __init__(
-        self, playlist: VideoPlaylist, play_command: str = PLAY_COMMAND
-    ) -> None:
-        self.playlist = playlist
-        self.play_command = play_command
+    def __init__(self, default_file: pathlib.Path) -> None:
+        self.default_file = default_file
+        self._current = default_file
+        self._playing = False
 
-        self.cur_ = playlist[0]
-        self.command: asyncio.Queue = asyncio.Queue()
+        self._command: asyncio.Queue = asyncio.Queue()
 
     @property
-    def current_path(self) -> pathlib.Path:
-        return self.cur_
-
-    @current_path.setter
-    def current_path(self, path: pathlib.Path) -> None:
-        self.cur_ = path
-        asyncio.create_task(self.command.put("re-play"))
+    def current(self) -> pathlib.Path:
+        return self._current
 
     @property
-    def current_index(self) -> int:
-        return self.playlist.index(self.current_path)
+    def playing(self) -> bool:
+        return self._playing
 
-    @current_index.setter
-    def current_index(self, index: int) -> None:
-        self.current_path = self.playlist[index]
+    @playing.setter
+    def playing(self, play: bool) -> None:
+        if self._playing == play:
+            return
+        else:
+            self._playing = play
+            asyncio.create_task(self._command.put("play-pause"))
 
-    def prev(self) -> None:
-        try:
-            self.current_index -= 1
-        except IndexError:
-            self.current_index = len(self.playlist) - 1
+    async def play(self, path: pathlib.Path) -> None:
+        self._current = path
+        await self.restart()
 
-    def next(self) -> None:
-        try:
-            self.current_index += 1
-        except IndexError:
-            self.current_index = 0
+    async def resume(self) -> None:
+        self.playing = True
 
-    async def play(self) -> asyncio.subprocess.Process:
-        return await asyncio.create_subprocess_shell(
-            f"{PLAY_COMMAND} '{player.current_path}'",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+    async def pause(self) -> None:
+        self.playing = False
 
-    async def play_loop(self) -> None:
+    async def stop(self) -> None:
+        await self.play(self.default_file)
+
+    async def restart(self) -> None:
+        await self._command.put("restart")
+
+    async def command_loop(self, proc: asyncio.subprocess.Process) -> None:
+        commands = {"play-pause": b" ", "restart": b"q"}
+
         while True:
-            proc = await self.play()
+            cmd = commands.get(await self._command.get())
 
-            async def cmd_wait():
-                cmd = await self.command.get()
+            if cmd is not None and proc.stdin is not None:
+                try:
+                    proc.stdin.write(cmd)
+                except ProcessLookupError:
+                    break
 
-                if cmd == "re-play":
-                    try:
-                        proc.stdin.write(b"q")
-                    except ProcessLookupError:
-                        pass
+            if cmd == b"q":
+                break
+
+        self._playing = False
+
+    async def run(self) -> typing.NoReturn:
+        while True:
+            proc = await asyncio.create_subprocess_shell(
+                f"{PLAY_COMMAND} '{self.current}'",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            self._playing = self._current != self.default_file
 
             await asyncio.wait(
-                [cmd_wait(), proc.wait()], return_when=asyncio.FIRST_COMPLETED
+                [
+                    asyncio.create_task(self.command_loop(proc)),
+                    asyncio.create_task(proc.wait()),
+                ],
+                return_when=asyncio.FIRST_COMPLETED,
             )
 
 
-player = VideoPlayer(VideoPlaylist())
-
-
-@web.middleware
 def api_endpoint(
     handler: typing.Callable[[web.Request], typing.Awaitable[web.Response]]
 ) -> typing.Callable[[web.Request], typing.Awaitable[web.Response]]:
@@ -141,118 +148,128 @@ def api_endpoint(
     return wrap
 
 
-def status_response(error: str = ""):
-    return web.json_response(
-        {
-            "error": error,
-            "playlist": [str(x) for x in player.playlist],
-            "current": {
-                "index": player.current_index,
-                "path": str(player.current_path),
-            },
-        }
-    )
+class Controller:
+    def __init__(self, playlist: VideoPlaylist, player: VideoPlayer) -> None:
+        self.playlist = playlist
+        self.player = player
 
+    def _bad_request(self, message: str = "bad request") -> web.Response:
+        return web.json_response({"error": f"400: {message}"}, status=400)
 
-def video_response(index: int) -> web.Response:
-    return web.json_response({"index": index, "path": str(player.playlist[index])})
+    def _current_index(self) -> typing.Optional[int]:
+        if self.player.current == self.player.default_file:
+            return None
+        else:
+            return self.playlist.index(self.player.current)
 
+    async def status(self, req: web.Request) -> web.Response:
+        if self.player.current == self.player.default_file:
+            current = None
+            status = "stop"
+        else:
+            current = {
+                "path": str(self.player.current),
+                "index": self.playlist.index(self.player.current),
+            }
+            status = "play" if self.player.playing else "pause"
 
-@route.get("/")
-async def index(request: web.Request) -> web.FileResponse:
-    return web.FileResponse("./index.html")
-
-
-@route.get("/status")
-@api_endpoint
-async def status(req: web.Request) -> web.Response:
-    return status_response()
-
-
-@route.get("/next")
-@api_endpoint
-async def get_next(req: web.Request) -> web.Response:
-    return video_response((player.current_index + 1) % len(player.playlist))
-
-
-@route.post("/next")
-@api_endpoint
-async def go_next(req: web.Request) -> web.Response:
-    player.next()
-    return status_response()
-
-
-@route.get("/prev")
-@api_endpoint
-async def get_prev(req: web.Request) -> web.Response:
-    return video_response((player.current_index - 1) % len(player.playlist))
-
-
-@route.post("/prev")
-@api_endpoint
-async def go_prev(req: web.Request) -> web.Response:
-    player.prev()
-    return status_response()
-
-
-@route.get("/current")
-@api_endpoint
-async def current_info(req: web.Request) -> web.Response:
-    return video_response(player.current_index)
-
-
-@route.post("/current")
-@api_endpoint
-async def play_video(req: web.Request) -> web.Response:
-    try:
-        query = await req.json()
-    except Exception as e:
-        logging.error(f"bad rqeust: {e}")
-        return web.json_response({"error": "400: invalid json"}, status=400)
-
-    path = pathlib.Path(query.get("path"))
-    try:
-        index = int(query["index"]) if query.get("index") is not None else None
-    except ValueError:
-        return web.json_response({"error": "400: index is must be int"}, status=400)
-
-    if (
-        path is not None
-        and index is not None
-        and pathlib.Path(path) != player.playlist[index]
-    ):
         return web.json_response(
-            {"error": "400: inconsistent index and path"}, status=400
+            {
+                "error": "",
+                "playlist": [str(x) for x in self.playlist],
+                "current": current,
+                "status": status,
+            }
         )
 
-    if path is not None:
-        try:
-            player.current_path = path
-            return video_response(player.current_index)
-        except KeyError:
-            return web.json_response(
-                {"error": f"400: no such video ({path})"}, status=400
-            )
+    async def go_next(self, req: web.Request) -> web.Response:
+        index = self._current_index()
+        if index is None:
+            await self.player.play(self.playlist[0])
+        else:
+            await self.player.play(self.playlist[(index + 1) % len(self.playlist)])
+        return web.json_response({"error": ""})
 
-    if index is not None:
-        try:
-            player.current_index = index
-            return video_response(player.current_index)
-        except IndexError:
-            return web.json_response(
-                {"error": f"400: index {index} is out of bounds the playlist"},
-                status=400,
-            )
+    async def go_prev(self, req: web.Request) -> web.Response:
+        index = self._current_index()
+        if index is None:
+            await self.player.play(self.playlist[-1])
+        else:
+            await self.player.play(self.playlist[(index - 1) % len(self.playlist)])
 
-    return web.json_response({"error": f"400: must be set index or path"}, status=400)
+        return web.json_response({"error": ""})
+
+    async def resume(self, req: web.Request) -> web.Response:
+        await self.player.resume()
+        return web.json_response({"error": ""})
+
+    async def pause(self, req: web.Request) -> web.Response:
+        await self.player.pause()
+        return web.json_response({"error": ""})
+
+    async def stop(self, req: web.Request) -> web.Response:
+        await self.player.stop()
+        return web.json_response({"error": ""})
+
+    async def play(self, req: web.Request) -> web.Response:
+        try:
+            query = await req.json()
+        except Exception as e:
+            logging.error(f"bad request: {e}")
+            return self._bad_request("invalid json")
+
+        path = pathlib.Path(query.get("path"))
+        try:
+            index = int(query["index"]) if query.get("index") is not None else None
+        except ValueError:
+            return self._bad_request("index is must be int")
+
+        if (
+            path is not None
+            and index is not None
+            and pathlib.Path(path) != self.playlist[index]
+        ):
+            return self._bad_request("inconsistent index and path")
+
+        try:
+            if path is not None:
+                await self.player.play(path)
+            elif index is not None:
+                await self.player.play(self.playlist[index])
+            return web.json_response({"error": ""})
+        except (KeyError, IndexError):
+            return self._bad_request(f'no such video (path: "{path}", index: {index})')
+
+        return self._bad_request("must be set index or path")
+
+    def route(self, path: str = "/api") -> typing.List[web.RouteDef]:
+        return [
+            web.route(x[1], f"{path}{x[0]}", api_endpoint(x[2]))
+            for x in [
+                ("", "GET", self.status),
+                ("/next", "POST", self.go_next),
+                ("/prev", "POST", self.go_prev),
+                ("/resume", "POST", self.resume),
+                ("/pause", "POST", self.pause),
+                ("/stop", "POST", self.stop),
+                ("/play", "POST", self.play),
+            ]
+        ]
+
+
+async def index_html(req: web.Request) -> web.FileResponse:
+    return web.FileResponse("./index.html")
 
 
 @app.on_startup.append
 async def on_start(app: web.Application) -> None:
-    asyncio.create_task(player.play_loop())
+    asyncio.create_task(app["player"].run())
 
 
-app.add_routes(route)
+app["player"] = VideoPlayer(pathlib.Path("./blank.mp4"))
+app["playlist"] = VideoPlaylist()
+app.add_routes([web.get("/", index_html)])
+app.add_routes(Controller(app["playlist"], app["player"]).route())
 
 
 if __name__ == "__main__":

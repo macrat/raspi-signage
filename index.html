@@ -19,12 +19,17 @@
                 <v-content>
                     <v-container>
                         <v-card class=ma-2>
-                            <v-card-title>{{ current.path.split('/').pop() }}</v-card-title>
-                            <v-card-text>{{ current.path.replace(/[^/]+$/, '') }}</v-card-text>
+                            <v-card-title v-if=current>{{ current.path.split('/').pop() }}</v-card-title>
+                            <v-card-title v-else>---</v-card-title>
+                            <v-card-text v-if=current>{{ current.path.replace(/[^/]+$/, '') }}</v-card-text>
                             <v-card-actions>
                                 <div class=flex-grow-1></div>
-                                <v-btn @click=prev>prev</v-btn>
-                                <v-btn @click=next>next</v-btn>
+                                <v-btn large icon @click="sendCommand('prev')" :disabled="status === 'stop'"><v-icon>mdi-skip-previous</v-icon></v-btn>
+                                <v-btn large icon @click="sendCommand('stop')" :disabled="status === 'stop'"><v-icon>mdi-stop</v-icon></v-btn>
+                                <v-btn large icon @click="sendCommand('pause')" v-if="status === 'play'"><v-icon>mdi-pause</v-icon></v-btn>
+                                <v-btn large icon @click="sendCommand('resume')" v-else :disabled="status === 'stop'"><v-icon>mdi-play</v-icon></v-btn>
+                                <v-btn large icon @click="sendCommand('next')" :disabled="status === 'stop'"><v-icon>mdi-skip-next</v-icon></v-btn>
+                                <div class=flex-grow-1></div>
                             </v-card-actions>
                         </v-card>
 
@@ -59,17 +64,19 @@ new Vue({
             {text: 'file path', value: 'path'},
         ],
         playlist: [],
+        status: 'stop',
         current: {path: '', index: 0},
         loading: true,
     }),
     mounted() {
         setInterval(async () => {
-            const {playlist, current} = (await axios.get('/status')).data;
+            const {playlist, current, status} = (await axios.get('/api')).data;
             this.current = current;
+            this.status = status;
 
             this.playlist = playlist.map((video, idx) => ({
                 index: idx,
-                current: idx === current.index,
+                current: current && idx === current.index,
                 path: video,
             }));
         }, 500);
@@ -77,13 +84,10 @@ new Vue({
     },
     methods: {
         changeTo(item) {
-            axios.post('/current', {path: item.path});
+            axios.post('/api/play', {path: item.path});
         },
-        prev() {
-            axios.post('/prev');
-        },
-        next() {
-            axios.post('/next');
+        sendCommand(command) {
+            axios.post(`/api/${command}`);
         },
     },
 });
