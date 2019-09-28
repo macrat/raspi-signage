@@ -20,3 +20,4 @@ allow_prereleases = true
 start = "python main.py"
 format = "black ."
 test = "mypy ."
+make-requirements = "sh -c 'pipenv lock -r > requirements.txt'"
