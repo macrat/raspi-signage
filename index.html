@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+
+<html>
+    <head>
+        <title>Digital Signage Controller</title>
+        <script src="https://unpkg.com/vue@2.6.x"></script>
+        <link rel=stylesheet href="https://unpkg.com/mdi/css/materialdesignicons.min.css" />
+        <link rel=stylesheet href="https://unpkg.com/vuetify@2.0.x/dist/vuetify.min.css" />
+        <script src="https://unpkg.com/vuetify@2.0.x/dist/vuetify.min.js"></script>
+        <script src="https://unpkg.com/axios@0.19.x/dist/axios.min.js"></script>
+    </head>
+    <body>
+        <main>
+            <v-app>
+                <v-app-bar app color=indigo dark>
+                    <v-toolbar-title>Digital Signage Controller</v-toolbar-title>
+                </v-app-bar>
+
+                <v-content>
+                    <v-container>
+                        <v-card class=ma-2>
+                            <v-card-title>{{ current.path.split('/').pop() }}</v-card-title>
+                            <v-card-text>{{ current.path.replace(/[^/]+$/, '') }}</v-card-text>
+                            <v-card-actions>
+                                <div class=flex-grow-1></div>
+                                <v-btn @click=prev>prev</v-btn>
+                                <v-btn @click=next>next</v-btn>
+                            </v-card-actions>
+                        </v-card>
+
+                        <v-card class=ma-2>
+                            <v-data-table
+                                :headers=headers
+                                :items=playlist
+                                :loading=loading
+                                :items-per-page=25
+                                item-key=path
+                                @click:row=changeTo>
+
+                                <template v-slot:item.current="{ item }">
+                                    <v-icon v-if=item.current>mdi-play-circle</v-icon>
+                                    <v-icon v-else>mdi-checkbox-blank-circle-outline</v-icon>
+                                </template>
+                            </v-data-table>
+                        </v-card>
+                    </v-container>
+                </v-content>
+            </v-app>
+        </main>
+
+        <script>
+new Vue({
+    el: 'main',
+    vuetify: new Vuetify(),
+    data: () => ({
+        headers: [
+            {text: 'index', value: 'index'},
+            {text: 'status', value: 'current'},
+            {text: 'file path', value: 'path'},
+        ],
+        playlist: [],
+        current: {path: '', index: 0},
+        loading: true,
+    }),
+    mounted() {
+        setInterval(async () => {
+            const {playlist, current} = (await axios.get('/status')).data;
+            this.current = current;
+
+            this.playlist = playlist.map((video, idx) => ({
+                index: idx,
+                current: idx === current.index,
+                path: video,
+            }));
+        }, 500);
+        this.loading = false;
+    },
+    methods: {
+        changeTo(item) {
+            axios.post('/current', {path: item.path});
+        },
+        prev() {
+            axios.post('/prev');
+        },
+        next() {
+            axios.post('/next');
+        },
+    },
+});
+        </script>
+    </body>
+</html>
