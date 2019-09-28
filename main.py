@@ -8,7 +8,7 @@ from aiohttp import web
 
 
 VIDEOS_PATH = pathlib.Path("videos/")
-PLAY_COMMAND = "mplayer"
+PLAY_COMMAND = "omxplayer --loop --no-osd"
 
 
 app = web.Application()
@@ -95,6 +95,7 @@ class VideoPlayer:
     async def play(self) -> asyncio.subprocess.Process:
         return await asyncio.create_subprocess_shell(
             f"{PLAY_COMMAND} '{player.current_path}'",
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -103,20 +104,17 @@ class VideoPlayer:
         while True:
             proc = await self.play()
 
-            async def wait_cmd():
+            async def cmd_wait():
                 cmd = await self.command.get()
+
                 if cmd == "re-play":
                     try:
-                        proc.terminate()
+                        proc.stdin.write(b"q")
                     except ProcessLookupError:
                         pass
 
-            async def wait_video():
-                if await proc.wait() == 0:
-                    self.next()
-
             await asyncio.wait(
-                [wait_cmd(), wait_video()], return_when=asyncio.FIRST_COMPLETED
+                [cmd_wait(), proc.wait()], return_when=asyncio.FIRST_COMPLETED
             )
 
 
