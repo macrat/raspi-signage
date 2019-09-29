@@ -1,5 +1,5 @@
-RaspPi Signage
-==============
+RasPi Signage
+=============
 
 A video player for use raspberry pi as digital signage.
 
@@ -9,7 +9,7 @@ A video player for use raspberry pi as digital signage.
 ### 1. Download and Install
 
 ``` shell
-$ git clone https://github.com/macrat/rasppi-signage.git && cd rasppi-signage
+$ git clone https://github.com/macrat/raspi-signage.git && cd raspi-signage
 $ pipenv install
 ```
 
@@ -28,7 +28,7 @@ And, access to `http://{your raspberry pi address}:8080/`.
 
 ### Ansible: Another install option
 
-[rasppi-signage-ansible](https://github.com/macrat/rasppi-signage-ansible) is the best way to make digital signage from scratch.
+[raspi-signage-ansible](https://github.com/macrat/raspi-signage-ansible) is the best way to make digital signage from scratch.
 that includes all settings such as auto startup or automounting USB memory.
 
 
