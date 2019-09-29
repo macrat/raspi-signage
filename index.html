@@ -21,9 +21,9 @@
                 <v-content>
                     <v-container>
                         <v-card class=ma-2 :loading=sending>
-                            <v-card-title v-if=current>{{ current.path.split('/').pop() }}</v-card-title>
+                            <v-card-title v-if=current>{{ current.split('/').pop() }}</v-card-title>
                             <v-card-title v-else>---</v-card-title>
-                            <v-card-text v-if=current>{{ current.path.replace(/[^/]+$/, '') }}</v-card-text>
+                            <v-card-text v-if=current>{{ current.replace(/[^/]+$/, '') }}</v-card-text>
                             <v-card-actions>
                                 <div class=flex-grow-1></div>
                                 <v-btn large icon @click="sendCommand('prev')" :disabled="status === 'stop'"><v-icon>mdi-skip-previous</v-icon></v-btn>
@@ -47,8 +47,14 @@
                                 @click:row=changeTo>
 
                                 <template v-slot:item.current="{ item }">
-                                    <v-icon v-if=item.current>mdi-play-circle</v-icon>
-                                    <v-icon v-else>mdi-checkbox-blank-circle-outline</v-icon>
+                                    <template v-if=item.current><v-icon>mdi-play-circle</v-icon> playing</template>
+                                    <template v-else><v-icon>mdi-checkbox-blank-circle-outline</v-icon> standby</template>
+                                </template>
+
+                                <template v-slot:item.type="{ item }">
+                                    <template v-if="item.type === 'video'"><v-icon>mdi-filmstrip</v-icon> video</template>
+                                    <template v-else-if="item.type === 'image'"><v-icon>mdi-image</v-icon> picture</template>
+                                    <template v-else="item.type === 'image'"><v-icon>mdi-help-box</v-icon> unknown</template>
                                 </template>
                             </v-data-table>
                         </v-card>
@@ -58,18 +64,31 @@
         </main>
 
         <script>
+function guessType(path) {
+    const ext = path.split('.').pop();
+
+    if (['avi', 'm4v', 'mkv', 'mov', 'mp4'].includes(ext)) {
+        return 'video';
+    } else if (['git', 'jpeg', 'jpg', 'png', 'tif', 'tiff'].includes(ext)) {
+        return 'image';
+    } else {
+        return 'unknown';
+    }
+}
+
 new Vue({
     el: 'main',
     vuetify: new Vuetify(),
     data: () => ({
         headers: [
-            {text: 'index', value: 'index'},
             {text: 'status', value: 'current'},
-            {text: 'file path', value: 'path'},
+            {text: 'type', value: 'type'},
+            {text: 'directory', value: 'dir'},
+            {text: 'name', value: 'name'},
         ],
         playlist: [],
         status: 'stop',
-        current: {path: '', index: 0},
+        current: '',
         loading: true,
         sending: false,
     }),
@@ -85,13 +104,15 @@ new Vue({
             this.loading = true;
 
             const {playlist, current, status} = (await axios.get('/api')).data;
-            this.current = current;
+            this.current = current.path;
             this.status = status;
 
             this.playlist = playlist.map((video, idx) => ({
-                index: idx,
                 current: current && idx === current.index,
+                type: guessType(video),
                 path: video,
+                name: video.split('/').pop(),
+                dir: video.replace(/[^/]+$/, ''),
             }));
 
             this.loading = false;
