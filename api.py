@@ -5,7 +5,7 @@ import typing
 
 from aiohttp import web
 
-from player import VideoPlaylist, VideoPlayer
+from player import Playlist, Player
 
 
 def api_endpoint(
@@ -28,7 +28,7 @@ def api_endpoint(
 
 
 class Controller:
-    def __init__(self, playlist: VideoPlaylist, player: VideoPlayer) -> None:
+    def __init__(self, playlist: Playlist, player: Player) -> None:
         self.playlist = playlist
         self.player = player
 

@@ -1,20 +1,35 @@
 import asyncio
+import itertools
 import pathlib
 import typing
 
 import config
 
 
-class VideoPlaylist(typing.Sequence[pathlib.Path]):
-    def __init__(self, path: pathlib.Path = pathlib.Path(config.VIDEOS_DIR)) -> None:
+class Playlist(typing.Sequence[pathlib.Path]):
+    def __init__(self, path: pathlib.Path) -> None:
         self._path = path
+        self.patterns = [*config.VIDEO_PATTERNS, *config.IMAGE_PATTERNS]
 
     @property
     def path(self) -> pathlib.Path:
         return self._path
 
     def __iter__(self) -> typing.Iterator[pathlib.Path]:
-        return iter(sorted(self._path.glob("**/*.mp4"), key=lambda x: str(x)))
+        return iter(
+            sorted(
+                itertools.chain.from_iterable(
+                    self._path.glob("**/" + pattern) for pattern in self.patterns
+                ),
+                key=lambda x: str(x),
+            )
+        )
+
+    def is_included(self, path: pathlib.Path) -> bool:
+        for pattern in self.patterns:
+            if path.match(pattern):
+                return True
+        return False
 
     @typing.overload
     def __getitem__(self, idx: int) -> pathlib.Path:
@@ -43,7 +58,7 @@ class VideoPlaylist(typing.Sequence[pathlib.Path]):
         raise KeyError(path)
 
 
-class VideoPlayer:
+class Player:
     def __init__(self, default_file: pathlib.Path) -> None:
         self.default_file = default_file
         self._current = default_file
@@ -80,9 +95,34 @@ class VideoPlayer:
     async def stop(self) -> None:
         await self.play(self.default_file)
 
-    async def command_loop(self, proc: asyncio.subprocess.Process) -> None:
+    def _type_of(self, path: pathlib.Path) -> str:
+        for pattern in config.VIDEO_PATTERNS:
+            if path.match(pattern):
+                return "video"
+
+        for pattern in config.IMAGE_PATTERNS:
+            if path.match(pattern):
+                return "image"
+
+        return "unknown"
+
+    def _decide_command(
+        self, path: pathlib.Path
+    ) -> typing.Tuple[str, typing.Mapping[str, bytes]]:
+        type_ = self._type_of(self.current)
+
+        if type_ == "video":
+            return config.VIDEO_COMMAND, config.VIDEO_SHORTCUTS
+        elif type_ == "image":
+            return config.IMAGE_COMMAND, config.IMAGE_SHORTCUTS
+        else:
+            raise TypeError("unknown type", path)
+
+    async def _command_loop(
+        self, proc: asyncio.subprocess.Process, shortcuts: typing.Mapping[str, bytes]
+    ) -> None:
         while True:
-            cmd = config.PLAYER_SHORTCUTS.get(await self._command.get())
+            cmd = shortcuts.get(await self._command.get())
 
             if cmd is not None and proc.stdin is not None:
                 try:
@@ -97,17 +137,19 @@ class VideoPlayer:
 
     async def run(self) -> typing.NoReturn:
         while True:
+            command, shortcuts = self._decide_command(self.current)
+
             proc = await asyncio.create_subprocess_shell(
-                f"{config.PLAY_COMMAND} '{self.current}'",
+                f"{command} '{self.current}'",
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            self._playing = self._current != self.default_file
+            self._playing = True
 
             await asyncio.wait(
                 [
-                    asyncio.create_task(self.command_loop(proc)),
+                    asyncio.create_task(self._command_loop(proc, shortcuts)),
                     asyncio.create_task(proc.wait()),
                 ],
                 return_when=asyncio.FIRST_COMPLETED,

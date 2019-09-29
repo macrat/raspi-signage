@@ -4,13 +4,13 @@ import pathlib
 from aiohttp import web
 
 from api import Controller
-from player import VideoPlaylist, VideoPlayer
+from player import Playlist, Player
 import config
 
 
 app = web.Application()
-app["player"] = VideoPlayer(pathlib.Path(config.DEFAULT_VIDEO))
-app["playlist"] = VideoPlaylist()
+app["player"] = Player(pathlib.Path(config.DEFAULT_FILE))
+app["playlist"] = Playlist(pathlib.Path(config.BASE_DIR))
 
 
 async def index_html(req: web.Request) -> web.FileResponse:
