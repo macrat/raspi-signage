@@ -1,7 +1,7 @@
 HOST = "0.0.0.0"
 PORT = 8080
 
-DEFAULT_FILE = "./logo.png"
+DEFAULT_FILE = "./assets/logo.png"
 BASE_DIR = "videos/"
 
 VIDEO_PATTERNS = ["*.avi", "*.m4v", "*.mkv", "*.mov", "*.mp4"]

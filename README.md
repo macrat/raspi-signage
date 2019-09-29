@@ -1,5 +1,4 @@
-![RasPi Signage](./logo.png
-)
+![RasPi Signage](./assets/logo.png)
 A video player for use raspberry pi as digital signage.
 
 
@@ -15,7 +14,7 @@ $ pipenv install
 ### 2. Edit settings
 
 Please edit `config.py`.
-Maybe, least you have to edit `VIDEO_DIR`.
+Maybe, least you have to edit `BASE_DIR`.
 
 ### 3. Run
 
