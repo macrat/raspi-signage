@@ -1,3 +1,4 @@
+import asyncio
 import functools
 import logging
 import pathlib
@@ -45,6 +46,7 @@ class Controller:
             return None
 
     async def status(self, req: web.Request) -> web.Response:
+        current: typing.Optional[typing.Dict[str, typing.Any]]
         try:
             current = {
                 "path": str(self.player.current),
@@ -138,3 +140,13 @@ class Controller:
                 ("/play", "POST", self.play),
             ]
         ]
+
+    async def auto_play(self) -> typing.NoReturn:
+        while True:
+            while len(self.playlist) == 0:
+                await asyncio.sleep(1)
+
+            await self.player.play(self.playlist[0])
+
+            while len(self.playlist) != 0:
+                await asyncio.sleep(5)

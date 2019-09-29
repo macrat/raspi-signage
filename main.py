@@ -11,6 +11,7 @@ import config
 app = web.Application()
 app["player"] = Player(pathlib.Path(config.DEFAULT_FILE))
 app["playlist"] = Playlist(pathlib.Path(config.BASE_DIR))
+app["controller"] = Controller(app["playlist"], app["player"])
 
 
 async def favicon(req: web.Request) -> web.FileResponse:
@@ -22,12 +23,15 @@ async def index_html(req: web.Request) -> web.FileResponse:
 
 
 app.add_routes([web.get("/", index_html), web.get("/favicon.ico", favicon)])
-app.add_routes(Controller(app["playlist"], app["player"]).route())
+app.add_routes(app["controller"].route())
 
 
 @app.on_startup.append
 async def on_start(app: web.Application) -> None:
     asyncio.create_task(app["player"].run())
+
+    if config.AUTO_PLAY:
+        asyncio.create_task(app["controller"].auto_play())
 
 
 if __name__ == "__main__":

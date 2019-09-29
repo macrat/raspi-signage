@@ -11,3 +11,5 @@ VIDEO_SHORTCUTS = {"play-pause": b" ", "kill": b"q"}
 IMAGE_PATTERNS = ["*.gif", "*.jpeg", "*.jpg", "*.png", "*.tif", "*.tiff"]
 IMAGE_COMMAND = "fim --quiet --autozoom -T 1"
 IMAGE_SHORTCUTS = {"kill": b"q"}
+
+AUTO_PLAY = True
