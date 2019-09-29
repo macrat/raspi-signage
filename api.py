@@ -8,6 +8,9 @@ from aiohttp import web
 from player import Playlist, Player
 
 
+logger = logging.getLogger(__name__)
+
+
 def api_endpoint(
     handler: typing.Callable[[web.Request], typing.Awaitable[web.Response]]
 ) -> typing.Callable[[web.Request], typing.Awaitable[web.Response]]:
@@ -19,7 +22,7 @@ def api_endpoint(
         except web.HTTPException as ex:
             raise
         except Exception as e:
-            logging.error(f'"{request.url}": {repr(e)}')
+            logger.error(f'"{request.url}": {repr(e)}')
             return web.json_response(
                 {"error": "500: internal server error"}, status=500
             )
@@ -36,21 +39,21 @@ class Controller:
         return web.json_response({"error": f"400: {message}"}, status=400)
 
     def _current_index(self) -> typing.Optional[int]:
-        if self.player.current == self.player.default_file:
-            return None
-        else:
+        try:
             return self.playlist.index(self.player.current)
+        except KeyError:
+            return None
 
     async def status(self, req: web.Request) -> web.Response:
-        if self.player.current == self.player.default_file:
-            current = None
-            status = "stop"
-        else:
+        try:
             current = {
                 "path": str(self.player.current),
                 "index": self.playlist.index(self.player.current),
             }
             status = "play" if self.player.playing else "pause"
+        except KeyError:
+            current = None
+            status = "stop"
 
         return web.json_response(
             {
@@ -94,7 +97,7 @@ class Controller:
         try:
             query = await req.json()
         except Exception as e:
-            logging.error(f"bad request: {e}")
+            logger.error(f"bad request: {e}")
             return self._bad_request("invalid json")
 
         path = pathlib.Path(query.get("path"))
@@ -126,6 +129,7 @@ class Controller:
             web.route(x[1], f"{path}{x[0]}", api_endpoint(x[2]))
             for x in [
                 ("", "GET", self.status),
+                ("/", "GET", self.status),
                 ("/next", "POST", self.go_next),
                 ("/prev", "POST", self.go_prev),
                 ("/resume", "POST", self.resume),

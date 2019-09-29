@@ -2,7 +2,7 @@
 
 <html>
     <head>
-        <title>Digital Signage Controller</title>
+        <title>RasPi Signage Controller</title>
         <script src="https://unpkg.com/vue@2.6.x"></script>
         <link rel=stylesheet href="https://unpkg.com/mdi/css/materialdesignicons.min.css" />
         <link rel=stylesheet href="https://unpkg.com/vuetify@2.0.x/dist/vuetify.min.css" />
@@ -13,12 +13,14 @@
         <main>
             <v-app>
                 <v-app-bar app color=indigo dark>
-                    <v-toolbar-title>Digital Signage Controller</v-toolbar-title>
+                    <v-toolbar-title>RasPi Signage Controller</v-toolbar-title>
+                    <div class=flex-grow-1></div>
+                    <v-btn icon @click=refresh><v-icon>mdi-reload</v-icon></v-btn>
                 </v-app-bar>
 
                 <v-content>
                     <v-container>
-                        <v-card class=ma-2>
+                        <v-card class=ma-2 :loading=sending>
                             <v-card-title v-if=current>{{ current.path.split('/').pop() }}</v-card-title>
                             <v-card-title v-else>---</v-card-title>
                             <v-card-text v-if=current>{{ current.path.replace(/[^/]+$/, '') }}</v-card-text>
@@ -33,12 +35,14 @@
                             </v-card-actions>
                         </v-card>
 
-                        <v-card class=ma-2>
+                        <v-card class=ma-2 :loading=loading>
                             <v-data-table
                                 :headers=headers
                                 :items=playlist
-                                :loading=loading
                                 :items-per-page=25
+                                :footer-props="{
+                                    itemsPerPageOptions: [25, 50, 100, -1],
+                                }"
                                 item-key=path
                                 @click:row=changeTo>
 
@@ -67,9 +71,19 @@ new Vue({
         status: 'stop',
         current: {path: '', index: 0},
         loading: true,
+        sending: false,
     }),
     mounted() {
-        setInterval(async () => {
+        (autoRefresh = () => {
+            this.refresh()
+                .then(() => setTimeout(autoRefresh, 10000))
+                .catch(err => console.error(err));
+        })();
+    },
+    methods: {
+        async refresh() {
+            this.loading = true;
+
             const {playlist, current, status} = (await axios.get('/api')).data;
             this.current = current;
             this.status = status;
@@ -79,15 +93,24 @@ new Vue({
                 current: current && idx === current.index,
                 path: video,
             }));
-        }, 500);
-        this.loading = false;
-    },
-    methods: {
-        changeTo(item) {
-            axios.post('/api/play', {path: item.path});
+
+            this.loading = false;
         },
-        sendCommand(command) {
-            axios.post(`/api/${command}`);
+        async changeTo(item) {
+            this.sending = true;
+            await axios.post('/api/play', {path: item.path});
+            setTimeout(async () => {
+                await this.refresh();
+                this.sending = false;
+            }, 100);
+        },
+        async sendCommand(command) {
+            this.sending = true;
+            await axios.post(`/api/${command}`);
+            setTimeout(async () => {
+                this.sending = false;
+                await this.refresh();
+            }, 100);
         },
     },
 });

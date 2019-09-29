@@ -1,9 +1,35 @@
 import asyncio
 import itertools
+import logging
 import pathlib
+import signal
 import typing
 
 import config
+
+
+logger = logging.getLogger(__name__)
+
+
+class UntiloFirstComplete:
+    async def __aenter__(self) -> "UntiloFirstComplete":
+        self.tasks: typing.Set[asyncio.Task] = set()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        _, pending = await asyncio.wait(self.tasks, return_when=asyncio.FIRST_COMPLETED)
+
+        for x in pending:
+            x.cancel()
+            try:
+                await x
+            except asyncio.CancelledError:
+                pass
+
+        return True
+
+    def start(self, awaitable: typing.Awaitable) -> None:
+        self.tasks.add(asyncio.create_task(awaitable))
 
 
 class Playlist(typing.Sequence[pathlib.Path]):
@@ -74,23 +100,19 @@ class Player:
     def playing(self) -> bool:
         return self._playing
 
-    @playing.setter
-    def playing(self, play: bool) -> None:
-        if self._playing == play:
-            return
-        else:
-            self._playing = play
-            asyncio.create_task(self._command.put("play-pause"))
-
     async def play(self, path: pathlib.Path) -> None:
         self._current = path
         await self._command.put("kill")
 
     async def resume(self) -> None:
-        self.playing = True
+        if not self._playing:
+            await self._command.put("play-pause")
+            self._playing = True
 
     async def pause(self) -> None:
-        self.playing = False
+        if self._playing:
+            await self._command.put("play-pause")
+            self._playing = False
 
     async def stop(self) -> None:
         await self.play(self.default_file)
@@ -122,15 +144,22 @@ class Player:
         self, proc: asyncio.subprocess.Process, shortcuts: typing.Mapping[str, bytes]
     ) -> None:
         while True:
-            cmd = shortcuts.get(await self._command.get())
+            command = await self._command.get()
+            shortcut = shortcuts.get(command)
 
-            if cmd is not None and proc.stdin is not None:
+            if shortcut is not None and proc.stdin is not None:
                 try:
-                    proc.stdin.write(cmd)
-                except ProcessLookupError:
+                    proc.stdin.write(shortcut)
+                except ProcessLookupError as e:
+                    logger.error(f"process missing: {e}")
                     break
 
-            if cmd == b"q":
+            if command == "kill":
+                try:
+                    proc.terminate()
+                except ProcessLookupError as e:
+                    logger.info(f"process missing when killing: {e}")
+                    break
                 break
 
         self._playing = False
@@ -139,18 +168,14 @@ class Player:
         while True:
             command, shortcuts = self._decide_command(self.current)
 
+            logger.info(f"exec: {command} '{self.current}'")
             proc = await asyncio.create_subprocess_shell(
                 f"{command} '{self.current}'",
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
             )
             self._playing = True
 
-            await asyncio.wait(
-                [
-                    asyncio.create_task(self._command_loop(proc, shortcuts)),
-                    asyncio.create_task(proc.wait()),
-                ],
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+            async with UntiloFirstComplete() as nursery:
+                nursery.start(self._command_loop(proc, shortcuts))
+                nursery.start(proc.wait())
