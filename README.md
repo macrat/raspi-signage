@@ -1,6 +1,5 @@
-RasPi Signage
-=============
-
+![RasPi Signage](./logo.png
+)
 A video player for use raspberry pi as digital signage.
 
 
