@@ -104,7 +104,7 @@ new Vue({
             this.loading = true;
 
             const {playlist, current, status} = (await axios.get('/api')).data;
-            this.current = current.path;
+            this.current = current && current.path;
             this.status = status;
 
             this.playlist = playlist.map((video, idx) => ({
