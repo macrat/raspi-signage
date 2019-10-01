@@ -85,9 +85,11 @@ class Playlist(typing.Sequence[pathlib.Path]):
 
 
 class Player:
-    def __init__(self, default_file: pathlib.Path) -> None:
+    def __init__(
+        self, default_file: pathlib.Path, initial_file: pathlib.Path = None
+    ) -> None:
         self.default_file = default_file
-        self._current = default_file
+        self._current = initial_file if initial_file is not None else default_file
         self._playing = False
 
         self._command: asyncio.Queue = asyncio.Queue()

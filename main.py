@@ -9,7 +9,9 @@ import config
 
 
 app = web.Application()
-app["player"] = Player(pathlib.Path(config.DEFAULT_FILE))
+app["player"] = Player(
+    pathlib.Path(config.DEFAULT_FILE), pathlib.Path(config.INITIAL_FILE)
+)
 app["playlist"] = Playlist(pathlib.Path(config.BASE_DIR))
 app["controller"] = Controller(app["playlist"], app["player"])
 

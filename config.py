@@ -1,6 +1,7 @@
 HOST = "0.0.0.0"
 PORT = 8080
 
+INITIAL_FILE = "./assets/logo.png"
 DEFAULT_FILE = "./assets/logo.png"
 BASE_DIR = "videos/"
 
