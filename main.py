@@ -16,16 +16,12 @@ app["playlist"] = Playlist(pathlib.Path(config.BASE_DIR))
 app["controller"] = Controller(app["playlist"], app["player"])
 
 
-async def favicon(req: web.Request) -> web.FileResponse:
-    return web.FileResponse("./assets/icon.ico")
-
-
 async def index_html(req: web.Request) -> web.FileResponse:
     return web.FileResponse("./index.html")
 
 
-app.add_routes([web.get("/", index_html), web.get("/favicon.ico", favicon)])
 app.add_routes(app["controller"].route())
+app.add_routes([web.get("/", index_html), web.static("/", "./assets")])
 
 
 @app.on_startup.append
