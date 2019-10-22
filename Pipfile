@@ -19,5 +19,7 @@ allow_prereleases = true
 [scripts]
 start = "python main.py"
 format = "black ."
-test = "mypy ."
+test-typing = "mypy --ignore-missing-imports --python-version 3.7 ."
+test-format = "black --check ."
+test = "sh -c 'pipenv run test-typing && pipenv run test-format'"
 make-requirements = "sh -c 'pipenv lock -r > requirements.txt'"
